@@ -853,17 +853,9 @@ O projeto encontra-se em desenvolvimento e as funcionalidades descritas no roadm
 
 ```
 
-<<<<<<< HEAD
 Essa versão está mais alinhada à documentação porque, por exemplo, **não transforma o gateway de pagamento em uma tecnologia específica** — o documento explicitamente diz que ele ainda está "A definir" — e mantém **FCM** como tecnologia de notificações.
 
 Também preservei os requisitos formais, inclusive os **11 requisitos funcionais**, requisitos de desempenho, segurança, disponibilidade e compatibilidade definidos na SRS.
 
 Uma diferença importante em relação ao README anterior é que este documento trata o **Boost, Caixa Surpresa, recorrência, comissão de 10–15%, QR Code, painel do feirante e os quatro casos de uso principais** exatamente como elementos da especificação, em vez de inventar funcionalidades adicionais.
-=======
-Essa versão está mais alinhada à documentação porque, por exemplo, **não transforma o gateway de pagamento em uma tecnologia específica** — o documento explicitamente diz que ele ainda está "A definir" — e mantém **FCM** como tecnologia de notificações. :contentReference[oaicite:0]{index=0}
-
-Também preservei os requisitos formais, inclusive os **11 requisitos funcionais**, requisitos de desempenho, segurança, disponibilidade e compatibilidade definidos na SRS. :contentReference[oaicite:1]{index=1}
-
-Uma diferença importante em relação ao README anterior é que este documento trata o **Boost, Caixa Surpresa, recorrência, comissão de 10–15%, QR Code, painel do feirante e os quatro casos de uso principais** exatamente como elementos da especificação, em vez de inventar funcionalidades adicionais. :contentReference[oaicite:2]{index=2}
->>>>>>> 7f402603e152c0b563a7300c3f6fcc947e07f3af
 ```
