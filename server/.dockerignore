@@ -1,0 +1,47 @@
+# Dependencies
+node_modules
+
+# Bun legacy lockfile
+bun.lockb
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Build output
+dist/
+build/
+coverage/
+.turbo/
+.cache/
+
+# Test artifacts
+.nyc_output/
+test-results/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker
+docker-compose*.yml
+.dockerignore
+
+# Temporary files
+tmp/
+temp/
+*.tmp

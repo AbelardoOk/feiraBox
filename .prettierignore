@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+coverage
+.expo
+.next
+.turbo
+.cache
+.env
+.env.*
+*.lock
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock
+.agents/
