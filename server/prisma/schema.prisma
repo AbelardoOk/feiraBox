@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -12,10 +7,543 @@ datasource db {
   provider = "postgresql"
 }
 
+// ======================================================
+// ENUMS
+// ======================================================
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SubscriptionFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
+  DELIVERED
+  CANCELED
+}
+
+enum DeliveryStatus {
+  PENDING
+  PREPARING
+  READY
+  IN_TRANSIT
+  DELIVERED
+  CANCELED
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_PAYMENT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELED
+}
+
+enum CampaignObjective {
+  PROFILE_VISITS
+  PRODUCT_VIEWS
+  SUBSCRIPTIONS
+}
+
+enum NotificationType {
+  ORDER
+  SUBSCRIPTION
+  PAYMENT
+  DELIVERY
+  CAMPAIGN
+  SYSTEM
+}
+
+// ======================================================
+// USER
+// ======================================================
+
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
+  id String @id @default(uuid())
+
+  name         String
+  email        String  @unique
+  passwordHash String
+  phone        String?
+
+  role UserRole @default(USER)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Um usuário pode ou não possuir perfil de feirante.
+  vendorProfile VendorProfile?
+
+  addresses Address[]
+
+  subscriptions Subscription[]
+
+  orders Order[]
+
+  payments Payment[]
+
+  notifications Notification[]
+
+  campaigns Campaign[]
+}
+
+// ======================================================
+// FEIRANTE / PRODUTOR
+// ======================================================
+
+model VendorProfile {
+  id String @id @default(uuid())
+
+  userId String @unique
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessName String?
+  cpfCnpj      String  @unique
+  phone        String?
+
+  description String?
+  photoUrl    String?
+
+  fairId String?
+  fair   Fair?   @relation(fields: [fairId], references: [id], onDelete: SetNull)
+
+  bankAccount BankAccount?
+
+  products Product[]
+
+  surpriseBoxes SurpriseBox[]
+
+  orders Order[] @relation("VendorOrders")
+
+  campaigns Campaign[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fairId])
+}
+
+// ======================================================
+// FEIRA
+// ======================================================
+
+model Fair {
+  id String @id @default(uuid())
+
+  name        String
+  description String?
+
+  address String?
+  city    String?
+  state   String?
+
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+
+  vendors VendorProfile[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city])
+  @@index([state])
+}
+
+// ======================================================
+// ENDEREÇO
+// ======================================================
+
+model Address {
+  id String @id @default(uuid())
+
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name         String?
+  street       String
+  number       String
+  complement   String?
+  neighborhood String
+  city         String
+  state        String
+  postalCode   String
+
+  isDefault Boolean @default(false)
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ======================================================
+// CONTA BANCÁRIA
+// ======================================================
+
+model BankAccount {
+  id String @id @default(uuid())
+
+  vendorId String @unique
+
+  vendor VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  bankCode      String?
+  bankName      String?
+  agency        String?
+  accountNumber String?
+  accountType   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ======================================================
+// PRODUTO
+// ======================================================
+
+model Product {
+  id String @id @default(uuid())
+
+  vendorId String
+
+  vendor VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  category    String?
+
+  price Decimal @db.Decimal(10, 2)
+
+  photoUrl String?
+
+  isActive Boolean @default(true)
+
+  boxItems SurpriseBoxItem[]
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  campaigns Campaign[]
+
+  @@index([vendorId])
+  @@index([category])
+}
+
+// ======================================================
+// CAIXA SURPRESA
+// ======================================================
+
+model SurpriseBox {
+  id String @id @default(uuid())
+
+  vendorId String
+
+  vendor VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  price Decimal @db.Decimal(10, 2)
+
+  frequency SubscriptionFrequency
+
+  isActive Boolean @default(true)
+
+  items SurpriseBoxItem[]
+
+  subscriptions Subscription[]
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  campaigns Campaign[]
+
+  @@index([vendorId])
+  @@index([frequency])
+}
+
+// ======================================================
+// ITENS DA CAIXA
+// ======================================================
+
+model SurpriseBoxItem {
+  id String @id @default(uuid())
+
+  surpriseBoxId String
+  productId     String
+
+  surpriseBox SurpriseBox @relation(fields: [surpriseBoxId], references: [id], onDelete: Cascade)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  quantity Int @default(1)
+
+  @@unique([surpriseBoxId, productId])
+  @@index([productId])
+}
+
+// ======================================================
+// ASSINATURA
+// ======================================================
+
+model Subscription {
+  id String @id @default(uuid())
+
+  userId String
+  boxId  String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  surpriseBox SurpriseBox @relation(fields: [boxId], references: [id], onDelete: Restrict)
+
+  frequency SubscriptionFrequency
+
+  status SubscriptionStatus @default(ACTIVE)
+
+  price Decimal @db.Decimal(10, 2)
+
+  startedAt  DateTime  @default(now())
+  pausedAt   DateTime?
+  canceledAt DateTime?
+
+  nextBillingAt DateTime?
+
+  orders Order[]
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([boxId])
+  @@index([status])
+  @@index([nextBillingAt])
+}
+
+// ======================================================
+// PEDIDO
+// ======================================================
+
+model Order {
+  id String @id @default(uuid())
+
+  subscriptionId String
+  consumerId     String
+  vendorId       String
+
+  addressId String?
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  consumer User @relation(fields: [consumerId], references: [id], onDelete: Restrict)
+
+  vendor VendorProfile @relation("VendorOrders", fields: [vendorId], references: [id], onDelete: Restrict)
+
+  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  status OrderStatus @default(PENDING)
+
+  generatedAt DateTime @default(now())
+
+  expectedDeliveryAt DateTime?
+
+  deliveredAt DateTime?
+
+  delivery Delivery?
+
+  payment Payment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subscriptionId])
+  @@index([consumerId])
+  @@index([vendorId])
+  @@index([status])
+  @@index([expectedDeliveryAt])
+}
+
+// ======================================================
+// ENTREGA
+// ======================================================
+
+model Delivery {
+  id String @id @default(uuid())
+
+  orderId String @unique
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  status DeliveryStatus @default(PENDING)
+
+  expectedAt  DateTime?
+  startedAt   DateTime?
+  deliveredAt DateTime?
+
+  qrCode String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ======================================================
+// PAGAMENTO
+// ======================================================
+
+model Payment {
+  id String @id @default(uuid())
+
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  subscriptionId String?
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  orderId String? @unique
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  campaignId String? @unique
+
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  amount Decimal @db.Decimal(10, 2)
+
+  platformFee Decimal @db.Decimal(10, 2)
+
+  vendorAmount Decimal @db.Decimal(10, 2)
+
+  method PaymentMethod
+
+  status PaymentStatus @default(PENDING)
+
+  gatewayTransactionId String?
+
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([gatewayTransactionId])
+}
+
+// ======================================================
+// TRÁFEGO PAGO
+// ======================================================
+
+model Campaign {
+  id String @id @default(uuid())
+
+  vendorId String
+  userId   String
+
+  vendor VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  name String
+
+  objective CampaignObjective @default(PROFILE_VISITS)
+
+  status CampaignStatus @default(DRAFT)
+
+  // Conteúdo promovido.
+  // Uma campanha pode promover a banca inteira,
+  // uma caixa específica ou um produto específico.
+  surpriseBoxId String?
+  productId     String?
+
+  surpriseBox SurpriseBox? @relation(fields: [surpriseBoxId], references: [id], onDelete: SetNull)
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  // Orçamento
+  budget      Decimal  @db.Decimal(10, 2)
+  dailyBudget Decimal? @db.Decimal(10, 2)
+
+  spentAmount Decimal @default(0) @db.Decimal(10, 2)
+
+  // Período
+  startsAt DateTime
+  endsAt   DateTime
+
+  // Métricas
+  impressions Int @default(0)
+  clicks      Int @default(0)
+
+  // Controle de relevância/exibição
+  priority Int @default(0)
+
+  payment Payment?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vendorId])
+  @@index([userId])
+  @@index([status])
+  @@index([startsAt])
+  @@index([endsAt])
+  @@index([objective])
+}
+
+// ======================================================
+// NOTIFICAÇÕES
+// ======================================================
+
+model Notification {
+  id String @id @default(uuid())
+
+  userId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  title   String
+  message String
+
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([readAt])
 }
