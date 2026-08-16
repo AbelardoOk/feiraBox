@@ -1,9 +1,5 @@
-import openapi from '@elysia/openapi';
-import { Elysia } from 'elysia';
+import { env } from 'bun';
+import { app } from './app';
 
-const app = new Elysia()
-  .use(openapi)
-  .get('/', () => 'Hello Elysia')
-  .listen(3000);
-
-console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
+app.listen(env.PORT);
+console.log('🚀 FeiraBox API running on port 3000');
