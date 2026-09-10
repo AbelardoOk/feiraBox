@@ -3,6 +3,7 @@ import { Elysia } from 'elysia';
 
 import { authRoutes } from './modules/auth/auth.routes';
 import { fairsRoutes } from './modules/fairs/fairs.routes';
+import { vendorsRoutes } from './modules/vendors/vendors.routes';
 
 const swaggerDocumentation = {
   info: {
@@ -14,6 +15,7 @@ const swaggerDocumentation = {
   tags: [
     { name: 'Auth', description: 'Autenticação e autorização (JWT)' },
     { name: 'Fairs', description: 'Feiras e mercados (RF11 - busca por proximidade)' },
+    { name: 'Vendors', description: 'Feirantes e produtores (RF01)' },
     { name: 'Health', description: 'Verificação de saúde da API' },
   ],
   components: {
@@ -100,6 +102,7 @@ export const app = new Elysia()
   })
   .use(authRoutes)
   .use(fairsRoutes)
+  .use(vendorsRoutes)
   .get(
     '/',
     () => ({
