@@ -1,7 +1,8 @@
-import argon2 from 'argon2';
 import { prisma } from '../../database/prisma';
+import { hashPassword, verifyPassword } from '../../shared/utils/hash';
 
 import type { LoginInput, RegisterInput } from './auth.schema';
+import type { AuthTokenPayload } from './auth.types';
 
 export class AuthService {
   async register(input: RegisterInput) {
@@ -15,7 +16,7 @@ export class AuthService {
       throw new Error('E-mail já cadastrado');
     }
 
-    const passwordHash = await argon2.hash(input.password);
+    const passwordHash = await hashPassword(input.password);
 
     const user = await prisma.user.create({
       data: {
@@ -48,7 +49,7 @@ export class AuthService {
       throw new Error('E-mail ou senha inválidos');
     }
 
-    const passwordValid = await argon2.verify(user.passwordHash, input.password);
+    const passwordValid = await verifyPassword(user.passwordHash, input.password);
 
     if (!passwordValid) {
       throw new Error('E-mail ou senha inválidos');
@@ -85,6 +86,21 @@ export class AuthService {
           },
         },
       },
+    });
+  }
+
+  async generateToken(
+    jwt: {
+      sign: (payload: AuthTokenPayload) => Promise<string>;
+    },
+    user: {
+      id: string;
+      email: string;
+    },
+  ) {
+    return jwt.sign({
+      sub: user.id,
+      email: user.email,
     });
   }
 }

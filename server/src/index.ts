@@ -1,5 +1,6 @@
-import { env } from 'bun';
 import { app } from './app';
 
-app.listen(env.PORT);
-console.log('🚀 FeiraBox API running on port 3000');
+const port = Number(process.env.PORT ?? 3000);
+
+app.listen(port);
+console.log(`🚀 FeiraBox API running on port ${port}`);
