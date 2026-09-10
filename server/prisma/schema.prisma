@@ -114,6 +114,8 @@ model User {
   notifications Notification[]
 
   campaigns Campaign[]
+
+  ownedFairs Fair[]
 }
 
 // ======================================================
@@ -127,12 +129,13 @@ model VendorProfile {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  businessName String?
+  businessName String
   cpfCnpj      String  @unique
   phone        String?
 
   description String?
   photoUrl    String?
+  photos      String[] @default([])
 
   fairId String?
   fair   Fair?   @relation(fields: [fairId], references: [id], onDelete: SetNull)
@@ -170,6 +173,9 @@ model Fair {
   latitude  Decimal? @db.Decimal(10, 7)
   longitude Decimal? @db.Decimal(10, 7)
 
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
   vendors VendorProfile[]
 
   createdAt DateTime @default(now())
@@ -177,6 +183,7 @@ model Fair {
 
   @@index([city])
   @@index([state])
+  @@index([ownerId])
 }
 
 // ======================================================
@@ -280,6 +287,8 @@ model SurpriseBox {
   frequency SubscriptionFrequency
 
   isActive Boolean @default(true)
+
+  photoUrl String?
 
   items SurpriseBoxItem[]
 

@@ -84,10 +84,10 @@ export const authRoutes = new Elysia({
           user: t.Object({
             id: t.String({ examples: ['cuid-123'] }),
             name: t.String(),
-            email: t.String({ format: 'email' }),
+            email: t.String(),
             phone: t.Union([t.String(), t.Null()]),
             role: t.String({ examples: ['USER', 'ADMIN'] }),
-            createdAt: t.String({ format: 'date-time' }),
+            createdAt: t.Union([t.String(), t.Date()]),
           }),
           token: t.String({ description: 'JWT Bearer token' }),
         }),
@@ -152,7 +152,7 @@ export const authRoutes = new Elysia({
           user: t.Object({
             id: t.String(),
             name: t.String(),
-            email: t.String({ format: 'email' }),
+            email: t.String(),
             phone: t.Union([t.String(), t.Null()]),
             role: t.String(),
           }),

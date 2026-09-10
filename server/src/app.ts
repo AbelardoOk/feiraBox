@@ -2,6 +2,7 @@ import openapi from '@elysia/openapi';
 import { Elysia } from 'elysia';
 
 import { authRoutes } from './modules/auth/auth.routes';
+import { fairsRoutes } from './modules/fairs/fairs.routes';
 
 const swaggerDocumentation = {
   info: {
@@ -12,6 +13,7 @@ const swaggerDocumentation = {
   },
   tags: [
     { name: 'Auth', description: 'Autenticação e autorização (JWT)' },
+    { name: 'Fairs', description: 'Feiras e mercados (RF11 - busca por proximidade)' },
     { name: 'Health', description: 'Verificação de saúde da API' },
   ],
   components: {
@@ -97,6 +99,7 @@ export const app = new Elysia()
     console.error('[app] Unhandled error:', error);
   })
   .use(authRoutes)
+  .use(fairsRoutes)
   .get(
     '/',
     () => ({

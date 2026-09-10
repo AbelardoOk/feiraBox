@@ -108,3 +108,36 @@ Portanto, detalhes como:
 - tabelas de Boost;
 
 devem ser definidos durante o projeto e documentados como decisões técnicas.
+
+## Decisões Etapa 0 – Fase 3 Marketplace (2026-09-10)
+
+Aprovadas para implementação:
+
+### VendorProfile (Feirante) – `prisma/schema.prisma:123-154`
+
+- `businessName` **obrigatório** (`String` não opcional, `z.string().min(2).max(100)` no `vendors.schema.ts`). Migração `ALTER COLUMN "businessName" SET NOT NULL` (com `default ''` para dados legados `null`).
+- `photos String[]` `default []` – galeria simples MVP (PostgreSQL array), sem `VendorPhoto` dedicada. `photoUrl String?` mantido por compatibilidade.
+- `cpfCnpj @unique` permanece obrigatório e único.
+- Relação `userId @unique` 1-1 com `User`, `fairId?` opcional para `Fair`.
+
+### Product – `prisma/schema.prisma:237-262`
+
+- `category String?` com `@@index([category])` – permanece `String` flexível, não `enum` (ADR-008).
+- `photoUrl String?` mantido; `gallery` não entra no MVP.
+
+### Fair – `prisma/schema.prisma:160-180`
+
+- `latitude Decimal(10,7)?` / `longitude Decimal(10,7)?` – busca por proximidade via **Haversine em memória** no `fairs.service.ts`, sem `PostGIS`/`earthdistance` (ADR-009).
+- Adicionado `ownerId String?` FK → `User.id` `onDelete SET NULL` + `@@index([ownerId])` para controle de permissão (ADR-011). `GET /fairs` público, `POST/PATCH/DELETE` só `ownerId==jwt.sub` ou `role==ADMIN`.
+- `address/city/state` permanecem `String?` com índices `Fair_city_idx`/`Fair_state_idx`.
+
+### SurpriseBox – `prisma/schema.prisma:268-294`
+
+- Adicionado `photoUrl String?` opcional (foto única, ADR-010). `tags` não incluído no MVP.
+- Permanece `price Decimal(10,2)`, `frequency SubscriptionFrequency`, `isActive`, relação `vendorId!` e `SurpriseBoxItem` M:N.
+
+### Arquitetura
+
+- Mantido `routes → controller → service → Prisma` sem Repository (`decisions.md:ADR-006 ACEITA`).
+- `/vendors/:id` público para descoberta; `/users` focado em conta/autenticação (ADR-012).
+- Ownership: checagem `vendor.userId == jwt.sub` em todos `POST/PATCH/DELETE` de `vendors/products/surprise-boxes`; `ADMIN` global.
