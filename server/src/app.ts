@@ -4,6 +4,7 @@ import { Elysia } from 'elysia';
 import { authRoutes } from './modules/auth/auth.routes';
 import { fairsRoutes } from './modules/fairs/fairs.routes';
 import { productsRoutes } from './modules/products/products.routes';
+import { surpriseBoxesRoutes } from './modules/surprise-boxes/surprise-boxes.routes';
 import { vendorsRoutes } from './modules/vendors/vendors.routes';
 
 const swaggerDocumentation = {
@@ -18,6 +19,7 @@ const swaggerDocumentation = {
     { name: 'Fairs', description: 'Feiras e mercados (RF11 - busca por proximidade)' },
     { name: 'Vendors', description: 'Feirantes e produtores (RF01)' },
     { name: 'Products', description: 'Produtos do feirante (RF02)' },
+    { name: 'SurpriseBoxes', description: 'Caixas surpresa (RF02)' },
     { name: 'Health', description: 'Verificação de saúde da API' },
   ],
   components: {
@@ -106,6 +108,7 @@ export const app = new Elysia()
   .use(fairsRoutes)
   .use(vendorsRoutes)
   .use(productsRoutes)
+  .use(surpriseBoxesRoutes)
   .get(
     '/',
     () => ({
