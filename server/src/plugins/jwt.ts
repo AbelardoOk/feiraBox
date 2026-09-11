@@ -12,10 +12,6 @@ if (!jwtSecret) {
   );
 }
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL é obrigatório. Defina no ambiente.');
-}
-
 export const jwtPlugin = new Elysia({ name: 'jwt' }).use(
   jwt({
     name: 'jwt',

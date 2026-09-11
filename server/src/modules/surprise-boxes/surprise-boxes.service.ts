@@ -1,4 +1,5 @@
 import { prisma } from '../../database/prisma';
+import { isPrismaUniqueError } from '../../shared/errors/prisma';
 
 import type {
   AddItemInput,
@@ -235,18 +236,22 @@ export class SurpriseBoxesService {
       throw new Error('Produto já está na caixa');
     }
 
-    const item = await prisma.surpriseBoxItem.create({
-      data: {
-        surpriseBoxId: boxId,
-        productId: input.productId,
-        quantity: input.quantity ?? 1,
-      },
-      include: {
-        product: { select: { id: true, name: true, price: true, photoUrl: true } },
-      },
-    });
-
-    return item;
+    try {
+      const item = await prisma.surpriseBoxItem.create({
+        data: {
+          surpriseBoxId: boxId,
+          productId: input.productId,
+          quantity: input.quantity ?? 1,
+        },
+        include: {
+          product: { select: { id: true, name: true, price: true, photoUrl: true } },
+        },
+      });
+      return item;
+    } catch (error) {
+      if (isPrismaUniqueError(error)) throw new Error('Produto já está na caixa', { cause: error });
+      throw error;
+    }
   }
 
   async updateItem(

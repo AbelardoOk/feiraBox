@@ -35,37 +35,25 @@ export class ProductsService {
   }
 
   async findMany(query: ProductQueryInput) {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const page = Math.max(1, Math.min(query.page ?? 1, 1000));
+    const limit = Math.max(1, Math.min(query.limit ?? 20, 100));
     const skip = (page - 1) * limit;
 
-    const where: Record<string, unknown> = {};
-
-    if (query.vendorId) {
-      (where as Record<string, unknown>).vendorId = query.vendorId;
-    }
-
-    if (query.category) {
-      (where as Record<string, unknown>).category = {
-        contains: query.category,
-        mode: 'insensitive',
-      };
-    }
-
-    if (query.isActive !== undefined) {
-      (where as Record<string, unknown>).isActive = query.isActive;
-    } else {
-      // Por padrão, marketplace mostra apenas ativos
-      (where as Record<string, unknown>).isActive = true;
-    }
-
+    const and: Record<string, unknown>[] = [];
+    if (query.vendorId) and.push({ vendorId: query.vendorId });
+    if (query.category) and.push({ category: { contains: query.category, mode: 'insensitive' } });
+    if (query.isActive !== undefined) and.push({ isActive: query.isActive });
+    else and.push({ isActive: true });
     if (query.q) {
-      (where as Record<string, unknown>).OR = [
-        { name: { contains: query.q, mode: 'insensitive' } },
-        { description: { contains: query.q, mode: 'insensitive' } },
-        { category: { contains: query.q, mode: 'insensitive' } },
-      ];
+      and.push({
+        OR: [
+          { name: { contains: query.q, mode: 'insensitive' } },
+          { description: { contains: query.q, mode: 'insensitive' } },
+          { category: { contains: query.q, mode: 'insensitive' } },
+        ],
+      });
     }
+    const where: Record<string, unknown> = and.length ? { AND: and } : {};
 
     // Se filtra por vendorId, permite mostrar inativos para o dono via isActive param
     // Mas para público, já filtra isActive true por padrão

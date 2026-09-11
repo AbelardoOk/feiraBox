@@ -1,4 +1,5 @@
 import { prisma } from '../../database/prisma';
+import { isPrismaUniqueError } from '../../shared/errors/prisma';
 import { hashPassword, verifyPassword } from '../../shared/utils/hash';
 
 import type { LoginInput, RegisterInput } from './auth.schema';
@@ -18,24 +19,28 @@ export class AuthService {
 
     const passwordHash = await hashPassword(input.password);
 
-    const user = await prisma.user.create({
-      data: {
-        name: input.name,
-        email: input.email,
-        passwordHash,
-        phone: input.phone,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        role: true,
-        createdAt: true,
-      },
-    });
-
-    return user;
+    try {
+      const user = await prisma.user.create({
+        data: {
+          name: input.name,
+          email: input.email,
+          passwordHash,
+          phone: input.phone,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          createdAt: true,
+        },
+      });
+      return user;
+    } catch (error) {
+      if (isPrismaUniqueError(error)) throw new Error('E-mail já cadastrado', { cause: error });
+      throw error;
+    }
   }
 
   async login(input: LoginInput) {

@@ -81,9 +81,30 @@ export const app = new Elysia()
       };
     }
 
+    // Prisma P2002 (unique violation) por condição de corrida → 409
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code: unknown }).code === 'P2002'
+    ) {
+      set.status = 409;
+      const targetArr = (error as { meta?: { target?: string[] } }).meta?.target ?? [];
+      const target = targetArr.join(',');
+      if (targetArr.includes('cpfCnpj') || target.includes('cpfCnpj'))
+        return { success: false, message: 'CPF/CNPJ já cadastrado' };
+      if (targetArr.includes('email') || target.includes('email'))
+        return { success: false, message: 'E-mail já cadastrado' };
+      if (targetArr.includes('userId'))
+        return { success: false, message: 'Usuário já possui perfil de feirante' };
+      if (targetArr.includes('surpriseBoxId') && targetArr.includes('productId'))
+        return { success: false, message: 'Produto já está na caixa' };
+      return { success: false, message: 'Recurso já existe' };
+    }
+
     const message = error instanceof Error ? error.message : 'Erro interno do servidor';
 
-    // Mapeia erros conhecidos para status HTTP adequados
+    // Mapeia erros conhecidos para status HTTP adequados (mantém throw new Error)
     if (message === 'E-mail já cadastrado') {
       set.status = 409;
       return { success: false, message };
@@ -94,6 +115,18 @@ export const app = new Elysia()
     }
     if (message === 'Não autorizado. Token ausente, inválido ou expirado.') {
       set.status = 401;
+      return { success: false, message };
+    }
+    if (message === 'CPF/CNPJ já cadastrado') {
+      set.status = 409;
+      return { success: false, message };
+    }
+    if (message === 'Usuário já possui perfil de feirante') {
+      set.status = 409;
+      return { success: false, message };
+    }
+    if (message === 'Produto já está na caixa') {
+      set.status = 409;
       return { success: false, message };
     }
 
@@ -107,8 +140,11 @@ export const app = new Elysia()
       };
     }
 
-    // Log para debugging em desenvolvimento
-    console.error('[app] Unhandled error:', error);
+    if (process.env.NODE_ENV !== 'test') {
+      console.error('[app] Unhandled error:', error);
+    }
+    set.status = 500;
+    return { success: false, message: 'Erro interno do servidor' };
   })
   .use(authRoutes)
   .use(fairsRoutes)

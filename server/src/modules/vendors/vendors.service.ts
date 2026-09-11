@@ -1,4 +1,5 @@
 import { prisma } from '../../database/prisma';
+import { isPrismaUniqueError } from '../../shared/errors/prisma';
 
 import type { CreateVendorInput, UpdateVendorInput, VendorQueryInput } from './vendors.schema';
 
@@ -27,48 +28,58 @@ export class VendorsService {
       }
     }
 
-    const vendor = await prisma.vendorProfile.create({
-      data: {
-        userId,
-        businessName: input.businessName,
-        cpfCnpj: input.cpfCnpj,
-        phone: input.phone,
-        description: input.description,
-        photoUrl: input.photoUrl,
-        photos: input.photos ?? [],
-        fairId: input.fairId ?? null,
-      },
-    });
-
-    return vendor;
+    try {
+      const vendor = await prisma.vendorProfile.create({
+        data: {
+          userId,
+          businessName: input.businessName,
+          cpfCnpj: input.cpfCnpj,
+          phone: input.phone,
+          description: input.description,
+          photoUrl: input.photoUrl,
+          photos: input.photos ?? [],
+          fairId: input.fairId ?? null,
+        },
+      });
+      return vendor;
+    } catch (error) {
+      if (isPrismaUniqueError(error)) {
+        const target = (error as { meta?: { target?: string[] } }).meta?.target?.join(',') ?? '';
+        if (target.includes('cpfCnpj')) throw new Error('CPF/CNPJ já cadastrado', { cause: error });
+        if (target.includes('userId'))
+          throw new Error('Usuário já possui perfil de feirante', { cause: error });
+        throw new Error('CPF/CNPJ já cadastrado', { cause: error });
+      }
+      throw error;
+    }
   }
 
   async findMany(query: VendorQueryInput) {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const page = Math.max(1, Math.min(query.page ?? 1, 1000));
+    const limit = Math.max(1, Math.min(query.limit ?? 20, 100));
     const skip = (page - 1) * limit;
 
-    const where: Record<string, unknown> = {};
-
-    if (query.fairId) {
-      (where as Record<string, unknown>).fairId = query.fairId;
-    }
-
+    const and: Record<string, unknown>[] = [];
+    if (query.fairId) and.push({ fairId: query.fairId });
     if (query.q) {
-      (where as Record<string, unknown>).OR = [
-        { businessName: { contains: query.q, mode: 'insensitive' } },
-        { description: { contains: query.q, mode: 'insensitive' } },
-      ];
+      and.push({
+        OR: [
+          { businessName: { contains: query.q, mode: 'insensitive' } },
+          { description: { contains: query.q, mode: 'insensitive' } },
+        ],
+      });
     }
-
     if (query.city || query.state) {
-      (where as Record<string, unknown>).fair = {
-        is: {
-          ...(query.city ? { city: { contains: query.city, mode: 'insensitive' } } : {}),
-          ...(query.state ? { state: { contains: query.state, mode: 'insensitive' } } : {}),
+      and.push({
+        fair: {
+          is: {
+            ...(query.city ? { city: { contains: query.city, mode: 'insensitive' } } : {}),
+            ...(query.state ? { state: { contains: query.state, mode: 'insensitive' } } : {}),
+          },
         },
-      };
+      });
     }
+    const where: Record<string, unknown> = and.length ? { AND: and } : {};
 
     const [data, total] = await Promise.all([
       prisma.vendorProfile.findMany({
@@ -160,20 +171,24 @@ export class VendorsService {
     // Mantido para consistência futura
     void requesterRole;
 
-    const updated = await prisma.vendorProfile.update({
-      where: { userId },
-      data: {
-        businessName: input.businessName,
-        cpfCnpj: input.cpfCnpj,
-        phone: input.phone,
-        description: input.description,
-        photoUrl: input.photoUrl,
-        photos: input.photos,
-        fairId: input.fairId,
-      },
-    });
-
-    return updated;
+    try {
+      const updated = await prisma.vendorProfile.update({
+        where: { userId },
+        data: {
+          businessName: input.businessName,
+          cpfCnpj: input.cpfCnpj,
+          phone: input.phone,
+          description: input.description,
+          photoUrl: input.photoUrl,
+          photos: input.photos,
+          fairId: input.fairId,
+        },
+      });
+      return updated;
+    } catch (error) {
+      if (isPrismaUniqueError(error)) throw new Error('CPF/CNPJ já cadastrado', { cause: error });
+      throw error;
+    }
   }
 
   async updateById(
@@ -211,20 +226,24 @@ export class VendorsService {
       }
     }
 
-    const updated = await prisma.vendorProfile.update({
-      where: { id },
-      data: {
-        businessName: input.businessName,
-        cpfCnpj: input.cpfCnpj,
-        phone: input.phone,
-        description: input.description,
-        photoUrl: input.photoUrl,
-        photos: input.photos,
-        fairId: input.fairId,
-      },
-    });
-
-    return updated;
+    try {
+      const updated = await prisma.vendorProfile.update({
+        where: { id },
+        data: {
+          businessName: input.businessName,
+          cpfCnpj: input.cpfCnpj,
+          phone: input.phone,
+          description: input.description,
+          photoUrl: input.photoUrl,
+          photos: input.photos,
+          fairId: input.fairId,
+        },
+      });
+      return updated;
+    } catch (error) {
+      if (isPrismaUniqueError(error)) throw new Error('CPF/CNPJ já cadastrado', { cause: error });
+      throw error;
+    }
   }
 
   async deleteByUserId(userId: string) {
