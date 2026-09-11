@@ -4,9 +4,16 @@ import Elysia from 'elysia';
 
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET é obrigatório em produção. Defina JWT_SECRET no ambiente.');
+  }
   console.warn(
     '[jwtPlugin] JWT_SECRET não definido. Usando fallback inseguro apenas para desenvolvimento.',
   );
+}
+
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL é obrigatório. Defina no ambiente.');
 }
 
 export const jwtPlugin = new Elysia({ name: 'jwt' }).use(

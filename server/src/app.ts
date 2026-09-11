@@ -2,8 +2,11 @@ import openapi from '@elysia/openapi';
 import { Elysia } from 'elysia';
 
 import { authRoutes } from './modules/auth/auth.routes';
+import { deliveriesRoutes } from './modules/deliveries/deliveries.routes';
 import { fairsRoutes } from './modules/fairs/fairs.routes';
+import { ordersRoutes } from './modules/orders/orders.routes';
 import { productsRoutes } from './modules/products/products.routes';
+import { subscriptionsRoutes } from './modules/subscriptions/subscriptions.routes';
 import { surpriseBoxesRoutes } from './modules/surprise-boxes/surprise-boxes.routes';
 import { vendorsRoutes } from './modules/vendors/vendors.routes';
 
@@ -20,6 +23,9 @@ const swaggerDocumentation = {
     { name: 'Vendors', description: 'Feirantes e produtores (RF01)' },
     { name: 'Products', description: 'Produtos do feirante (RF02)' },
     { name: 'SurpriseBoxes', description: 'Caixas surpresa (RF02)' },
+    { name: 'Subscriptions', description: 'Assinaturas recorrentes (RF03/RF09)' },
+    { name: 'Orders', description: 'Pedidos e painel do feirante (RF05/RF06)' },
+    { name: 'Deliveries', description: 'Entregas e QR Code' },
     { name: 'Health', description: 'Verificação de saúde da API' },
   ],
   components: {
@@ -109,6 +115,9 @@ export const app = new Elysia()
   .use(vendorsRoutes)
   .use(productsRoutes)
   .use(surpriseBoxesRoutes)
+  .use(subscriptionsRoutes)
+  .use(ordersRoutes)
+  .use(deliveriesRoutes)
   .get(
     '/',
     () => ({
