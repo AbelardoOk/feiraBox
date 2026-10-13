@@ -232,10 +232,11 @@ O projeto possui uma arquitetura **mobile-first**, composta por uma aplicação 
                     └───────────────────────┘
 
                          │
-              ┌──────────┴──────────┐
-              ▼                     ▼
-     Gateway de Pagamento       Firebase
-                                Cloud Messaging
+               ┌──────────┴──────────┐
+               ▼                     ▼
+      ASAAS v3 (PIX/Cartão)      Firebase
+      api-sandbox.asaas.com      Cloud Messaging
+      api.asaas.com
 ```
 
 ---
@@ -244,13 +245,13 @@ O projeto possui uma arquitetura **mobile-first**, composta por uma aplicação 
 
 A especificação do projeto define inicialmente a seguinte stack:
 
-| Camada               | Tecnologia               |
-| -------------------- | ------------------------ |
-| Mobile               | React Native             |
-| Backend              | Elysia.js + Bun          |
-| Banco de dados       | PostgreSQL               |
-| Notificações         | Firebase Cloud Messaging |
-| Gateway de pagamento | A definir                |
+| Camada               | Tecnologia                                                                   |
+| -------------------- | ---------------------------------------------------------------------------- |
+| Mobile               | React Native                                                                 |
+| Backend              | Elysia.js + Bun                                                              |
+| Banco de dados       | PostgreSQL                                                                   |
+| Notificações         | Firebase Cloud Messaging                                                     |
+| Gateway de pagamento | **ASAAS v3** (PIX + Cartão, `api-sandbox.asaas.com/v3` / `api.asaas.com/v3`) |
 
 ### Desenvolvimento
 
@@ -451,16 +452,78 @@ Entre os eventos previstos estão:
 
 ---
 
-## 💳 Pagamentos
+## 💳 Pagamentos — ASAAS v3
 
-O sistema deverá utilizar um **Gateway de Pagamento externo** para processar:
+O sistema utiliza **ASAAS v3** como Gateway de Pagamento externo (`server/src/modules/gateway/asaas.gateway.ts:42`, `server/src/config/asaas.ts:23`, ADR-004 ACEITA).
 
-- PIX;
-- Cartão de crédito;
-- Cobranças recorrentes;
-- Pagamentos antecipados.
+**Capacidades implementadas (RF04 / RF07 / RF08):**
 
-O gateway específico ainda está **a definir**.
+- **PIX** — `POST /v3/payments` `billingType: PIX` → `invoiceUrl` + `pixQrCode`/`pixCopyPaste` persistidos em `Payment.asaasInvoiceUrl/pixQrCode/pixCopyPaste` (`prisma/schema.prisma:492`);
+- **Cartão de Crédito** — `POST /v3/payments` `billingType: CREDIT_CARD` com `creditCard` + `creditCardHolderInfo` + `remoteIp` (ou `creditCardToken`), retorno `CONFIRMED` → `Payment.status=PAID` imediato;
+- **Cobranças recorrentes** — `POST /v3/subscriptions` `WEEKLY`/`MONTHLY` + `nextDueDate` para assinaturas (`server/src/modules/subscriptions/subscriptions.service.ts:1`), expansão futura para gerar parcelas automaticamente via ASAAS;
+- **Pagamentos antecipados** + **comissão contábil 12%** (`COMMISSION_RATE=0.12`, `server/src/modules/commission/commission.service.ts:19`, validada 10–15%), descontada diretamente (`platformFee` + `vendorAmount`), sem split `walletId` por enquanto (`netValue` reservado);
+- **Boost de Vendas** via `campaignId` (`POST /payments`).
+
+**Como utilizar (rotas):**
+
+```bash
+# 1) Assinatura com PIX (gera QR Code)
+POST /subscriptions
+Authorization: Bearer <JWT>
+{
+  "boxId": "uuid-caixa",
+  "frequency": "WEEKLY",
+  "method": "PIX"
+}
+→ 201 { id, payments:[{ asaasInvoiceUrl, pixQrCode, pixCopyPaste, status:"PENDING" }] }
+
+# 2) Assinatura com Cartão
+POST /subscriptions
+Authorization: Bearer <JWT>
+{
+  "boxId": "uuid-caixa",
+  "method": "CREDIT_CARD",
+  "creditCard": { "holderName":"João Silva","number":"4111111111111111","expiryMonth":"12","expiryYear":"2030","ccv":"123" },
+  "creditCardHolderInfo": { "name":"João Silva","email":"joao@example.com","cpfCnpj":"52998224725","postalCode":"79002000","addressNumber":"123" }
+}
+→ 201 com Payment PAID se cartão aprovado
+
+# 3) Pagamento avulso (PIX ou Cartão) para assinatura/pedido/boost
+POST /payments
+Authorization: Bearer <JWT>
+{ "subscriptionId":"uuid", "method":"PIX" }
+{ "subscriptionId":"uuid", "method":"CREDIT_CARD", "creditCard":{...}, "creditCardHolderInfo":{...} }
+{ "orderId":"uuid", "method":"PIX" }
+{ "campaignId":"uuid", "method":"PIX" }  # Boost RF08
+→ 201 { asaasPaymentId, asaasInvoiceUrl, pixQrCode, status }
+
+# 4) Listar / consultar / reembolsar
+GET /payments?status=PENDING&page=1&limit=20  # Bearer (ADMIN vê todos)
+GET /payments/:id                              # Bearer (dono/ADMIN)
+POST /payments/:id/refund                      # Bearer (ADMIN/feirante, apenas PAID)
+
+# 5) Webhook ASAAS (público, idempotente)
+POST /webhooks/asaas
+asaas-access-token: <ASAAS_WEBHOOK_TOKEN>
+{ "id":"evt_xxx", "event":"PAYMENT_RECEIVED", "payment":{ "id":"pay_xxx","status":"RECEIVED","externalReference":"uuid-payment" } }
+→ 200 { received:true }  # PAYMENT_RECEIVED/CONFIRMED→PAID, REFUNDED, SUBSCRIPTION_INACTIVATED→CANCELED (+ Notification RF10)
+```
+
+**Configuração (`server/.env.example:8`, `server/src/config/asaas.ts:23`):**
+
+```env
+ASAAS_API_KEY=$aact_hmlg_...        # sandbox, $aact_prod_... produção
+ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3
+ASAAS_ENV=sandbox                    # sandbox | production
+ASAAS_WEBHOOK_TOKEN=32+chars-aleatório  # mesmo valor cadastrado em ASAAS > Webhooks > authToken
+COMMISSION_RATE=0.12                 # 0.10–0.15
+```
+
+Sem `ASAAS_API_KEY` o backend usa `MockGateway` (`server/src/modules/gateway/mock.gateway.ts:1`) — útil para dev/test sem rede. Com chave real, `AsaasGateway` faz `fetch` com `access_token` + `User-Agent: FeiraBox/1.0`.
+
+**Swagger:** `http://localhost:3000/swagger` (ou `/scalar`, `/openapi`) tags **Payments** e **Webhooks** documentam os contratos acima.
+
+Ver também `docs/api.md:60`, `docs/decisions.md:ADR-004`, `server/src/modules/payments/payments.routes.ts:12`, `server/src/modules/webhooks/webhooks.routes.ts:1`.
 
 ---
 
@@ -589,14 +652,14 @@ Já existe uma visão de interface para o **Painel do Feirante**, contemplando:
 - [ ] Cronograma de entregas
 - [ ] QR Code para validação
 
-### Fase 6 — Pagamentos
+### Fase 6 — Pagamentos — **Concluída (ASAAS v3)**
 
-- [ ] Escolha do gateway
-- [ ] PIX
-- [ ] Cartão de crédito
-- [ ] Cobrança recorrente
-- [ ] Comissão automática
-- [ ] Integração de pagamentos
+- [x] Escolha do gateway — **ASAAS v3** (`api-sandbox.asaas.com/v3` / `api.asaas.com/v3`, `server/src/config/asaas.ts:23`, ADR-004 ACEITA)
+- [x] PIX — `POST /v3/payments` `billingType: PIX` → `invoiceUrl/pixQrCode` (`server/src/modules/gateway/asaas.gateway.ts:42`, `server/src/modules/payments/payments.service.ts:1`)
+- [x] Cartão de crédito — `POST /v3/payments` `billingType: CREDIT_CARD` com `creditCard`/`holderInfo`/`remoteIp` + `MockGateway` (`server/src/modules/gateway/mock.gateway.ts:1`)
+- [x] Cobrança recorrente — `POST /v3/subscriptions` `WEEKLY`/`MONTHLY` (`server/src/modules/subscriptions/subscriptions.service.ts:1`, expansão futura via `WebhookEvent`)
+- [x] Comissão automática — `CommissionService` taxa fixa `12%` (`COMMISSION_RATE=0.12`, `server/src/modules/commission/commission.service.ts:19`, descontada `platformFee/vendorAmount`, `netValue` reservado para split)
+- [x] Integração de pagamentos — `POST /payments`, `POST /subscriptions` (PIX/Cartão), `POST /webhooks/asaas` idempotente (`server/src/modules/webhooks/webhooks.service.ts:8`), docs `docs/api.md:60`
 
 ### Fase 7 — Comunicação
 
@@ -624,23 +687,24 @@ feiraBox/
 │
 ├── server/
 │   ├── src/
-│   │   ├── config/
-│   │   ├── infrastructure/
+│   │   ├── config/              # asaas.ts (ASAAS_API_KEY/BASE_URL/ENV/WEBHOOK_TOKEN/COMMISSION_RATE)
 │   │   ├── modules/
-│   │   │   ├── auth/
-│   │   │   ├── users/
-│   │   │   ├── vendors/
-│   │   │   ├── products/
-│   │   │   ├── boxes/
-│   │   │   ├── subscriptions/
-│   │   │   ├── orders/
-│   │   │   ├── payments/
-│   │   │   ├── deliveries/
-│   │   │   └── boosts/
-│   │   └── shared/
+│   │   │   ├── auth/            # JWT (RF)
+│   │   │   ├── vendors/         # RF01
+│   │   │   ├── products/        # RF02
+│   │   │   ├── surprise-boxes/  # RF02
+│   │   │   ├── subscriptions/   # RF03/RF09 + ASAAS recorrência (PIX/Cartão)
+│   │   │   ├── orders/          # RF05/RF06
+│   │   │   ├── payments/        # RF04/RF07 — POST /payments (PIX/Cartão), GET, refund
+│   │   │   ├── deliveries/      # QR Code
+│   │   │   ├── gateway/         # PaymentGateway interface + AsaasGateway + MockGateway
+│   │   │   ├── commission/      # CommissionService (12% FIXO, 10-15% validado)
+│   │   │   ├── webhooks/        # POST /webhooks/asaas (PAYMENT_*/SUBSCRIPTION_* idempotente)
+│   │   │   ├── fairs/           # RF11
+│   │   │   └── campaigns/       # RF08 Boost (payment via campaignId)
+│   │   └── shared/              # utils/money.ts (toAsaasDate, roundMoney)
 │   │
-│   ├── prisma/
-│   ├── tests/
+│   ├── prisma/                  # schema.prisma (+ Payment.asaasPaymentId/WebhookEvent), migrations/20261013_add_asaas_fields
 │   ├── Dockerfile
 │   └── package.json
 │
@@ -851,11 +915,4 @@ Projeto desenvolvido por estudantes de **Engenharia de Software — FACOM/UFMS**
 
 O projeto encontra-se em desenvolvimento e as funcionalidades descritas no roadmap serão implementadas progressivamente conforme a evolução do MVP.
 
-```
-
-Essa versão está mais alinhada à documentação porque, por exemplo, **não transforma o gateway de pagamento em uma tecnologia específica** — o documento explicitamente diz que ele ainda está "A definir" — e mantém **FCM** como tecnologia de notificações.
-
-Também preservei os requisitos formais, inclusive os **11 requisitos funcionais**, requisitos de desempenho, segurança, disponibilidade e compatibilidade definidos na SRS.
-
-Uma diferença importante em relação ao README anterior é que este documento trata o **Boost, Caixa Surpresa, recorrência, comissão de 10–15%, QR Code, painel do feirante e os quatro casos de uso principais** exatamente como elementos da especificação, em vez de inventar funcionalidades adicionais.
-```
+> **Atualização Fase 6:** o gateway foi definido como **ASAAS v3** (PIX + Cartão) — decisão técnica documentada em `docs/decisions.md:ADR-004`, sem alterar requisitos da SRS. Outras integrações (FCM) permanecem como na SRS.
