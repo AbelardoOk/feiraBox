@@ -74,16 +74,18 @@ O backend é responsável pelo acesso ao banco.
 
 ## Integrações externas
 
-### Gateway de pagamento
+### Gateway de pagamento — ASAAS v3
+
+Implementado em `server/src/modules/gateway/` (interface `PaymentGateway` + `AsaasGateway`).
 
 Responsável por:
 
-- processamento de PIX;
-- processamento de cartão;
-- cobrança recorrente;
-- liquidação/pagamento.
+- processamento de PIX (`POST /v3/payments` `billingType: PIX` → `invoiceUrl` + `pixQrCode`);
+- processamento de cartão (`POST /v3/payments` `billingType: CREDIT_CARD` com `creditCard` + `creditCardHolderInfo` + `remoteIp` ou `creditCardToken`);
+- cobrança recorrente (`POST /v3/subscriptions` `WEEKLY`/`MONTHLY`, `nextDueDate` — expansão futura);
+- liquidação/pagamento e webhooks (`POST /webhooks/asaas`).
 
-Gateway específico: ainda não definido.
+Gateway específico: **ASAAS v3** — `https://api-sandbox.asaas.com/v3` (sandbox) / `https://api.asaas.com/v3` (produção), auth `access_token` + `User-Agent: FeiraBox/1.0` (`server/src/config/asaas.ts:23`, `server/.env.example:8`). `MockGateway` usado em dev/test quando `ASAAS_API_KEY` ausente. Ver `docs/decisions.md:ADR-004`.
 
 ### Firebase Cloud Messaging
 

@@ -8,9 +8,9 @@ import { SubscriptionsService } from './subscriptions.service';
 export class SubscriptionsController {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
-  async create(body: unknown, userId: string) {
+  async create(body: unknown, userId: string, remoteIp?: string) {
     const input = createSubscriptionSchema.parse(body);
-    const sub = await this.subscriptionsService.create(input, userId);
+    const sub = await this.subscriptionsService.create(input, userId, remoteIp);
     return sub;
   }
 
