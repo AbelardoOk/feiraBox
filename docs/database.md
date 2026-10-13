@@ -141,3 +141,33 @@ Aprovadas para implementação:
 - Mantido `routes → controller → service → Prisma` sem Repository (`decisions.md:ADR-006 ACEITA`).
 - `/vendors/:id` público para descoberta; `/users` focado em conta/autenticação (ADR-012).
 - Ownership: checagem `vendor.userId == jwt.sub` em todos `POST/PATCH/DELETE` de `vendors/products/surprise-boxes`; `ADMIN` global.
+
+## Decisões Etapa 1 – Fase Pagamentos ASAAS (2026-10-13)
+
+### Payment – `prisma/schema.prisma:460-517`
+
+Campos ASAAS adicionados (RF04):
+
+- `asaasPaymentId String? @unique` — `pay_xxx` do ASAAS (`gatewayTransactionId` mantido por compatibilidade);
+- `asaasCustomerId String?` — `cus_xxx`;
+- `asaasSubscriptionId String?` — vínculo `sub_xxx` recorrente;
+- `asaasInvoiceUrl String?`, `pixQrCode String?`, `pixCopyPaste String?` — checkout PIX;
+- `dueDate DateTime?`, `gateway String? @default("asaas")`, `netValue Decimal?` — reservado para split futuro;
+- `cardLast4 String?`, `cardBrand String?` — exibição sem expor número.
+
+Índices `@@index([asaasPaymentId])` + `@@index([asaasSubscriptionId])`. Migração `prisma/migrations/20261013_add_asaas_fields/migration.sql`.
+
+### Subscription – `prisma/schema.prisma:372-374`
+
+- `asaasSubscriptionId String? @unique` — `sub_xxx` ASAAS para recorrência `WEEKLY`/`MONTHLY` (`nextDueDate`);
+- `asaasCustomerId String?`.
+
+### WebhookEvent – `prisma/schema.prisma:329-344`
+
+Tabela de idempotência ASAAS:
+
+- `id String @id` — `evt_xxx` (ou `evt_<event>_<paymentId>`);
+- `event String`, `payload Json`, `processed Boolean @default(false)`, `processedAt DateTime?`;
+- Índices `@@index([processed])`, `@@index([event])`.
+
+Fluxo: `POST /webhooks/asaas` valida `asaas-access-token` (`server/src/config/asaas.ts:27`), persiste `WebhookEvent` e processa `PAYMENT_RECEIVED/CONFIRMED→PAID`, `PAYMENT_REFUNDED→REFUNDED`, `PAYMENT_CREATED` (cria espelho se cobrança recorrente futura), `SUBSCRIPTION_INACTIVATED→CANCELED` (`server/src/modules/webhooks/webhooks.service.ts:8`). `Notification` RF10 criada em `PAYMENT_RECEIVED`.

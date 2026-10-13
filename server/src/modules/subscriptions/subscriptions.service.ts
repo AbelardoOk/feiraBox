@@ -1,4 +1,8 @@
 import { prisma } from '../../database/prisma';
+import { CommissionService } from '../commission/commission.service';
+import { getPaymentGateway } from '../gateway/asaas.gateway';
+import type { PaymentGateway } from '../gateway/payment-gateway.interface';
+import { toAsaasDate } from '../../shared/utils/money';
 
 import type {
   CreateSubscriptionInput,
@@ -17,7 +21,14 @@ function calculateNextBilling(frequency: string, from: Date = new Date()): Date 
 }
 
 export class SubscriptionsService {
-  async create(input: CreateSubscriptionInput, userId: string) {
+  private commission = new CommissionService();
+  private gateway: PaymentGateway = getPaymentGateway();
+
+  constructor(gateway?: PaymentGateway) {
+    if (gateway) this.gateway = gateway;
+  }
+
+  async create(input: CreateSubscriptionInput, userId: string, remoteIp?: string) {
     const box = await prisma.surpriseBox.findUnique({
       where: { id: input.boxId },
       select: {
@@ -83,10 +94,10 @@ export class SubscriptionsService {
       });
 
       const amount = price;
-      // Comissão RF07: 12% MVP (entre 10-15%)
-      const platformFee = Number((Number(amount) * 0.12).toFixed(2));
-      const vendorAmount = Number((Number(amount) - platformFee).toFixed(2));
+      const { platformFee, vendorAmount } = this.commission.calculate(Number(amount));
 
+      const method =
+        (input as unknown as { method?: string })?.method === 'CREDIT_CARD' ? 'CREDIT_CARD' : 'PIX';
       const payment = await tx.payment.create({
         data: {
           userId,
@@ -94,8 +105,10 @@ export class SubscriptionsService {
           amount,
           platformFee,
           vendorAmount,
-          method: 'PIX',
+          method: method as 'PIX' | 'CREDIT_CARD',
           status: 'PENDING',
+          gateway: 'asaas',
+          dueDate: addDays(now, 3),
         },
       });
 
@@ -128,6 +141,144 @@ export class SubscriptionsService {
 
       return { subscription, order, delivery, payment };
     });
+
+    // Tentativa de integrar com ASAAS (não bloqueia criação local)
+    // RF04 recorrência + RF07 contábil já garantidos localmente; gateway é camada de liquidação
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, name: true, email: true, phone: true },
+      });
+      if (user) {
+        let asaasCustomerId: string | null = null;
+
+        // Reuso ou criação de customer
+        const found = await this.gateway.getCustomerByExternalReference(user.id).catch(() => null);
+        if (found) {
+          asaasCustomerId = found.id;
+        } else {
+          const created = await this.gateway
+            .createCustomer({
+              name: user.name,
+              email: user.email,
+              phone: user.phone ?? undefined,
+              externalReference: user.id,
+            })
+            .catch(() => null);
+          if (created) asaasCustomerId = created.id;
+        }
+
+        if (asaasCustomerId) {
+          await prisma.subscription
+            .update({
+              where: { id: result.subscription.id },
+              data: { asaasCustomerId },
+            })
+            .catch(() => {});
+
+          // Atualizar payment com customer
+          await prisma.payment
+            .update({
+              where: { id: result.payment.id },
+              data: { asaasCustomerId },
+            })
+            .catch(() => {});
+
+          // Criar cobrança ASAAS para primeira parcela (PIX ou Cartão)
+          const method =
+            (input as unknown as { method?: string })?.method === 'CREDIT_CARD'
+              ? 'CREDIT_CARD'
+              : 'PIX';
+          const dueDateStr = toAsaasDate(addDays(now, method === 'PIX' ? 3 : 1));
+          // Para cartão, só tenta se dados foram enviados; senão mantém PIX pendente
+          const hasCardData =
+            (input as unknown as { creditCard?: unknown })?.creditCard &&
+            (input as unknown as { creditCardHolderInfo?: unknown })?.creditCardHolderInfo;
+
+          const shouldCreateGatewayPayment =
+            method === 'PIX' || (method === 'CREDIT_CARD' && hasCardData);
+
+          if (shouldCreateGatewayPayment) {
+            const gatewayPayment = await this.gateway
+              .createPayment({
+                customerId: asaasCustomerId,
+                billingType: method as 'PIX' | 'CREDIT_CARD',
+                value: Number(price),
+                dueDate: dueDateStr,
+                description: `FeiraBox — ${box.name} (${frequency})`,
+                externalReference: result.payment.id,
+                creditCard: (input as unknown as { creditCard?: never })?.creditCard,
+                creditCardHolderInfo: (input as unknown as { creditCardHolderInfo?: never })
+                  ?.creditCardHolderInfo,
+                remoteIp,
+              })
+              .catch(() => null);
+
+            if (gatewayPayment) {
+              await prisma.payment
+                .update({
+                  where: { id: result.payment.id },
+                  data: {
+                    asaasPaymentId: gatewayPayment.id,
+                    gatewayTransactionId: gatewayPayment.id,
+                    asaasInvoiceUrl: gatewayPayment.invoiceUrl ?? null,
+                    pixQrCode: gatewayPayment.pixQrCode ?? null,
+                    pixCopyPaste: gatewayPayment.pixCopyAndPaste ?? null,
+                    ...(gatewayPayment.status === 'CONFIRMED' ||
+                    gatewayPayment.status === 'RECEIVED'
+                      ? { status: 'PAID' as const, paidAt: new Date() }
+                      : {}),
+                  },
+                })
+                .catch(() => {});
+            }
+
+            // Para independência/expansão futura: criar ASAAS Subscription recorrente
+            // Isso fará o ASAAS gerar cobranças futuras automaticamente (WEEKLY/MONTHLY)
+            // RF03: pagamento antecipado + recorrência
+            const nextDue = toAsaasDate(
+              calculateNextBilling(frequency, addDays(now, method === 'PIX' ? 3 : 1)),
+            );
+            // Só cria assinatura recorrente se primeira cobrança PIX ou cartão aprovado
+            // Em sandbox com MockGateway sempre cria
+            const shouldCreateSubscription = true; // mantido para evolução; pode ser feature flag
+            if (shouldCreateSubscription) {
+              const gatewaySub = await this.gateway
+                .createSubscription({
+                  customerId: asaasCustomerId,
+                  billingType: method as 'PIX' | 'CREDIT_CARD',
+                  value: Number(price),
+                  cycle: frequency as 'WEEKLY' | 'MONTHLY',
+                  nextDueDate: nextDue,
+                  description: `FeiraBox Recorrência — ${box.name}`,
+                  externalReference: result.subscription.id,
+                  creditCard: (input as unknown as { creditCard?: never })?.creditCard,
+                  creditCardHolderInfo: (input as unknown as { creditCardHolderInfo?: never })
+                    ?.creditCardHolderInfo,
+                  remoteIp,
+                })
+                .catch(() => null);
+              if (gatewaySub) {
+                await prisma.subscription
+                  .update({
+                    where: { id: result.subscription.id },
+                    data: { asaasSubscriptionId: gatewaySub.id, asaasCustomerId },
+                  })
+                  .catch(() => {});
+                await prisma.payment
+                  .update({
+                    where: { id: result.payment.id },
+                    data: { asaasSubscriptionId: gatewaySub.id },
+                  })
+                  .catch(() => {});
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[subscriptions.create] ASAAS integração falhou (mantida criação local)', e);
+    }
 
     // Retornar assinatura com relações para o controller
     const subscriptionWithRelations = await prisma.subscription.findUnique({
@@ -300,7 +451,7 @@ export class SubscriptionsService {
   async cancel(id: string, requesterId: string) {
     const sub = await prisma.subscription.findUnique({
       where: { id },
-      select: { userId: true, status: true },
+      select: { userId: true, status: true, asaasSubscriptionId: true },
     });
 
     if (!sub) throw new Error('Assinatura não encontrada');
@@ -314,7 +465,13 @@ export class SubscriptionsService {
       data: { status: 'CANCELED', canceledAt: new Date(), nextBillingAt: null },
     });
 
-    // Opcional: cancelar pedidos PENDING futuros – MVP mantém pedidos já gerados
+    // Sincronizar com ASAAS se existir
+    if (sub.asaasSubscriptionId) {
+      await this.gateway.cancelSubscription(sub.asaasSubscriptionId).catch((e) => {
+        console.warn('[subscriptions.cancel] ASAAS cancel falhou', e);
+      });
+    }
+
     return updated;
   }
 

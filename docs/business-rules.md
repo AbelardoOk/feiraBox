@@ -51,20 +51,20 @@ Não introduza outros estados sem decisão do projeto.
 
 ## Pagamentos
 
-O pagamento é realizado por gateway externo.
+O pagamento é realizado por gateway externo **ASAAS v3** (`server/src/modules/gateway/asaas.gateway.ts:42`).
 
 Meios previstos:
 
-- PIX;
-- Cartão de Crédito.
+- PIX (`billingType: PIX` → `POST /v3/payments`, `invoiceUrl` + `pixQrCode` em `Payment.pixQrCode/pixCopyPaste`);
+- Cartão de Crédito (`billingType: CREDIT_CARD` → `POST /v3/payments` com `creditCard`/`creditCardHolderInfo`/`remoteIp` ou `creditCardToken`).
 
-O gateway definitivo ainda está "A definir".
+Gateway definitivo: **ASAAS v3** (sandbox `https://api-sandbox.asaas.com/v3`, produção `https://api.asaas.com/v3`), `MockGateway` para dev/test. Contratos em `server/src/modules/payments/payments.routes.ts:12` e `server/src/modules/subscriptions/subscriptions.routes.ts:70`. Eventos via `POST /webhooks/asaas` (`server/src/modules/webhooks/webhooks.routes.ts:1`) com idempotência `WebhookEvent`.
 
 ## Comissão
 
-A plataforma retém automaticamente uma comissão entre 10% e 15% sobre cada transação.
+A plataforma retém automaticamente uma comissão entre 10% e 15% sobre cada transação, **descontada diretamente do pagamento** (req 5).
 
-A especificação não define, neste documento, a regra detalhada para escolha do percentual dentro desse intervalo.
+Implementação atual: **taxa fixa de 12%** (`COMMISSION_RATE=0.12` em `server/.env.example:12`, validado 10-15% em `server/src/config/asaas.ts:9`), fácil de alterar via `.env`. Cálculo puro em `server/src/modules/commission/commission.service.ts:19` (`platformFee = amount * rate`, `vendorAmount = amount - platformFee`), por enquanto **contábil** (sem split ASAAS `walletId` — campos `Payment.netValue` reservados para split futuro `docs/decisions.md:ADR-004`). Usado em `server/src/modules/payments/payments.service.ts:44` e `server/src/modules/subscriptions/subscriptions.service.ts:44`.
 
 ## Boost de Vendas
 

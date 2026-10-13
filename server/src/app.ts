@@ -5,10 +5,12 @@ import { authRoutes } from './modules/auth/auth.routes';
 import { deliveriesRoutes } from './modules/deliveries/deliveries.routes';
 import { fairsRoutes } from './modules/fairs/fairs.routes';
 import { ordersRoutes } from './modules/orders/orders.routes';
+import { paymentsRoutes } from './modules/payments/payments.routes';
 import { productsRoutes } from './modules/products/products.routes';
 import { subscriptionsRoutes } from './modules/subscriptions/subscriptions.routes';
 import { surpriseBoxesRoutes } from './modules/surprise-boxes/surprise-boxes.routes';
 import { vendorsRoutes } from './modules/vendors/vendors.routes';
+import { webhooksRoutes } from './modules/webhooks/webhooks.routes';
 
 const swaggerDocumentation = {
   info: {
@@ -25,6 +27,8 @@ const swaggerDocumentation = {
     { name: 'SurpriseBoxes', description: 'Caixas surpresa (RF02)' },
     { name: 'Subscriptions', description: 'Assinaturas recorrentes (RF03/RF09)' },
     { name: 'Orders', description: 'Pedidos e painel do feirante (RF05/RF06)' },
+    { name: 'Payments', description: 'Pagamentos ASAAS — PIX e Cartão (RF04) + Comissão (RF07)' },
+    { name: 'Webhooks', description: 'Webhooks ASAAS — eventos de pagamento/assinatura' },
     { name: 'Deliveries', description: 'Entregas e QR Code' },
     { name: 'Health', description: 'Verificação de saúde da API' },
   ],
@@ -153,6 +157,8 @@ export const app = new Elysia()
   .use(surpriseBoxesRoutes)
   .use(subscriptionsRoutes)
   .use(ordersRoutes)
+  .use(paymentsRoutes)
+  .use(webhooksRoutes)
   .use(deliveriesRoutes)
   .get(
     '/',

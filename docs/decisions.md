@@ -39,18 +39,24 @@ Motivo: tecnologia definida na especificação.
 
 ## ADR-004 — Gateway de Pagamento
 
-Status: PROPOSTA
+Status: ACEITA
 
-Gateway ainda não definido.
+Gateway definido: **ASAAS v3** (`https://api-sandbox.asaas.com/v3` sandbox / `https://api.asaas.com/v3` produção).
 
-A escolha deve considerar suporte a:
+### Decisão
 
-- PIX;
-- cartão de crédito;
-- cobranças recorrentes;
-- integração com comissão/split quando necessário.
+- Interface `PaymentGateway` em `server/src/modules/gateway/payment-gateway.interface.ts` (DIP) + `AsaasGateway` (`server/src/modules/gateway/asaas.gateway.ts`) usando `fetch` nativo Bun, header `access_token` + `User-Agent` obrigatório.
+- `MockGateway` (`server/src/modules/gateway/mock.gateway.ts`) para testes e dev sem `ASAAS_API_KEY`.
+- Suporte a:
+  - PIX via `POST /v3/payments` (`billingType: PIX`, `invoiceUrl` + `pixQrCode`);
+  - Cartão de Crédito via `POST /v3/payments` com `creditCard` + `creditCardHolderInfo` + `remoteIp` ou `creditCardToken`, retorno `CONFIRMED` quando aprovado;
+  - Cobranças recorrentes via `POST /v3/subscriptions` (`WEEKLY`/`MONTHLY`, `nextDueDate`) para independência e expansão futura (RF03 semanal/mensal gerado pelo ASAAS);
+  - Webhooks `POST /webhooks/asaas` em `server/src/modules/webhooks/webhooks.routes.ts` com idempotência `WebhookEvent` (`prisma/schema.prisma:329`) e header `asaas-access-token`.
+- Comissão RF07 via `CommissionService` (`server/src/modules/commission/commission.service.ts`) taxa **FIXA** `COMMISSION_RATE=0.12` (12%, validado 10-15% em `server/src/config/asaas.ts:9`) — fácil de alterar via `.env`, descontada diretamente do `amount` (`platformFee` + `vendorAmount`), por enquanto **contábil** (sem split ASAAS `walletId`), já com `netValue` preparado para split futuro.
 
-Não implementar dependência de um gateway específico como decisão definitiva antes da escolha oficial.
+Config: `ASAAS_API_KEY`, `ASAAS_BASE_URL`, `ASAAS_ENV`, `ASAAS_WEBHOOK_TOKEN`, `COMMISSION_RATE` em `server/.env.example:8` e `server/src/config/asaas.ts`.
+
+Motivo: Aprovado com ASAAS já disponível em sandbox; cobre RF04 (PIX + Cartão antecipado), RF07 (10-15% descontado), RF08 (pagamento avulso Boost) e permite evolução para split sem quebrar contrato.
 
 ## ADR-005 — Autenticação com JWT
 

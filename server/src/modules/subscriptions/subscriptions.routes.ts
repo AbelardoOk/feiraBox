@@ -69,10 +69,15 @@ export const subscriptionsRoutes = new Elysia({ prefix: '/subscriptions' })
   )
   .post(
     '/',
-    async ({ body, user, set }) => {
+    async ({ body, user, set, headers, request }) => {
       try {
         const typedUser = user as { id: string; email: string; role: string };
-        const sub = await subscriptionsController.create(body, typedUser.id);
+        const remoteIp =
+          (headers as Record<string, string | undefined>)['x-forwarded-for'] ??
+          (headers as Record<string, string | undefined>)['x-real-ip'] ??
+          (request as Request).headers.get('x-forwarded-for') ??
+          undefined;
+        const sub = await subscriptionsController.create(body, typedUser.id, remoteIp ?? undefined);
         (set as { status?: number | string }).status = 201;
         return sub;
       } catch (error) {
@@ -119,12 +124,32 @@ export const subscriptionsRoutes = new Elysia({ prefix: '/subscriptions' })
         boxId: t.String({ format: 'uuid', examples: ['uuid-caixa'] }),
         frequency: t.Optional(t.Union([t.Literal('WEEKLY'), t.Literal('MONTHLY')])),
         addressId: t.Optional(t.String({ format: 'uuid' })),
+        method: t.Optional(t.Union([t.Literal('PIX'), t.Literal('CREDIT_CARD')])),
+        creditCard: t.Optional(
+          t.Object({
+            holderName: t.String({ minLength: 2 }),
+            number: t.String({ minLength: 13, maxLength: 19 }),
+            expiryMonth: t.String({ pattern: '^(0[1-9]|1[0-2])$' }),
+            expiryYear: t.String({ pattern: '^\\d{4}$' }),
+            ccv: t.String({ minLength: 3, maxLength: 4 }),
+          }),
+        ),
+        creditCardHolderInfo: t.Optional(
+          t.Object({
+            name: t.String({ minLength: 2 }),
+            email: t.String({ format: 'email' }),
+            cpfCnpj: t.String({ minLength: 11, maxLength: 14 }),
+            postalCode: t.String({ minLength: 8, maxLength: 9 }),
+            addressNumber: t.String({ minLength: 1 }),
+            phone: t.Optional(t.String()),
+          }),
+        ),
       }),
       detail: {
         tags: ['Subscriptions'],
-        summary: 'Criar assinatura',
+        summary: 'Criar assinatura (RF03 + PIX/Cartão + ASAAS)',
         description:
-          'Cria assinatura recorrente (RF03). Gera pedido e entrega automaticamente. Requer caixa ativa.',
+          'Cria assinatura recorrente (RF03) com PIX ou Cartão. Gera pedido, entrega e pagamento ASAAS automaticamente. Comissão contábil RF07 descontada do pagamento. Recorrência futura via ASAAS Subscriptions para expansão.',
         security: [{ bearerAuth: [] }],
       },
       response: {

@@ -323,6 +323,27 @@ model SurpriseBoxItem {
 }
 
 // ======================================================
+// WEBHOOK EVENT (idempotência ASAAS)
+// ======================================================
+
+model WebhookEvent {
+  id String @id // evt_xxx da ASAAS
+
+  event String
+
+  payload Json
+
+  processed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  processedAt DateTime?
+
+  @@index([processed])
+  @@index([event])
+}
+
+// ======================================================
 // ASSINATURA
 // ======================================================
 
@@ -348,6 +369,10 @@ model Subscription {
 
   nextBillingAt DateTime?
 
+  // ASAAS integração (RF04 recorrência)
+  asaasSubscriptionId String? @unique
+  asaasCustomerId     String?
+
   orders Order[]
 
   payments Payment[]
@@ -359,6 +384,7 @@ model Subscription {
   @@index([boxId])
   @@index([status])
   @@index([nextBillingAt])
+  @@index([asaasSubscriptionId])
 }
 
 // ======================================================
@@ -462,6 +488,21 @@ model Payment {
 
   gatewayTransactionId String?
 
+  // ASAAS integração (RF04)
+  asaasPaymentId      String? @unique
+  asaasCustomerId     String?
+  asaasSubscriptionId String?
+  asaasInvoiceUrl     String?
+  pixQrCode           String?
+  pixCopyPaste        String?
+  dueDate             DateTime?
+  gateway             String? @default("asaas")
+  netValue            Decimal? @db.Decimal(10, 2)
+
+  // Cartão (últimos 4 + bandeira para exibição, nunca número completo)
+  cardLast4 String?
+  cardBrand String?
+
   paidAt DateTime?
 
   createdAt DateTime @default(now())
@@ -471,6 +512,8 @@ model Payment {
   @@index([subscriptionId])
   @@index([status])
   @@index([gatewayTransactionId])
+  @@index([asaasPaymentId])
+  @@index([asaasSubscriptionId])
 }
 
 // ======================================================
