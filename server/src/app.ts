@@ -3,6 +3,7 @@ import { Elysia } from 'elysia';
 
 import { authRoutes } from './modules/auth/auth.routes';
 import { deliveriesRoutes } from './modules/deliveries/deliveries.routes';
+import { addressRoutes } from './modules/address/address.routes';
 import { fairsRoutes } from './modules/fairs/fairs.routes';
 import { ordersRoutes } from './modules/orders/orders.routes';
 import { paymentsRoutes } from './modules/payments/payments.routes';
@@ -211,6 +212,7 @@ export const app = new Elysia()
     return { success: false, message: 'Erro interno do servidor' };
   })
   .use(authRoutes)
+  .use(addressRoutes)
   .use(fairsRoutes)
   .use(vendorsRoutes)
   .use(productsRoutes)
